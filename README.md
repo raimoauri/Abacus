@@ -22,7 +22,14 @@ Recoverable VAT is stripped from cost to a **net** figure; margin compares net c
 VAT-exclusive part of the retail price. Transport is spread per unit across an invoice/batch (RTC).
 Per-line VAT overrides are supported; books use the reduced rate, own titles strip production VAT.
 
+## Inventory & sales (FIFO)
+Each catalogue line is a received lot. Sales (entered manually or imported from a Vektori /
+WooCommerce CSV) are matched to products by code (SKU/EAN/ISBN) then by name, and deplete the
+**oldest lot first (FIFO)**. From that the app derives per-item stock on hand, per-invoice
+sell-through, and ROI (realized profit ÷ amount invested in the batch). Unmatched sales are
+flagged. Sales live in the same core file as a `sales` collection; they can split to a separate
+file if volume grows.
+
 ## Development
 The whole app is one file, `index.html` (React + htm, inlined UMD builds). Changes are committed
-here and go live on Pages after a refresh. Roadmap: inventory/stock, then a separate FIFO
-**sales** file to track per-invoice sell-through and ROI.
+here and go live on Pages after a refresh.
