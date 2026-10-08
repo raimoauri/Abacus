@@ -153,6 +153,10 @@ label.lab{font-size:11.5px;font-weight:600;color:var(--muted);display:block;marg
 .catrow{display:grid;grid-template-columns:1fr auto;gap:10px 12px;align-items:center;padding:7px 15px}
 .catbar{height:7px;border-radius:5px;background:var(--surface-2);overflow:hidden;grid-column:1/-1}
 .catbar>i{display:block;height:100%;background:var(--brand-soft);border-radius:5px}
+.minibar{display:inline-block;width:64px;height:7px;border-radius:5px;background:var(--surface-2);border:1px solid var(--line);overflow:hidden;vertical-align:middle}
+.minibar>i{display:block;height:100%;background:var(--good)}
+.stbar{height:12px;border-radius:7px;background:var(--surface-2);border:1px solid var(--line);overflow:hidden}
+.stbar>i{display:block;height:100%;background:linear-gradient(90deg,var(--good),color-mix(in srgb,var(--good) 70%,var(--brand-soft)))}
 .catname{font-weight:600;font-size:13px}
 .catval{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
 
@@ -918,13 +922,16 @@ function Invoices({cfg,act,openItem,openInvoice}){
           <span class=${"caret"+(isOpen?" open":"")}>▶</span><span class="no">${inv.no||"(no number)"}</span><span class="sup">${supName(ws,inv.supplierId)}</span>
           <span class="note" style=${{fontVariantNumeric:"tabular-nums"}}>${fmtD(inv.date)||"no date"}</span>
           <span class="chip">${inv.country||"—"}</span>${mode==="books"?html`<span class="chip vat">${inv.vatInCost?"VAT in cost":"net cost"}</span>`:null}
-          <span class="mini">${a.lines} ${L.items.toLowerCase()} · ${num(a.units)} · landed ${money(a.landed)} · sold ${sv.sellThrough==null?"—":pct(sv.sellThrough)} · <${Health} ws=${ws} m=${a.margin}/></span></div>
+          <span class="mini">${a.lines} ${L.items.toLowerCase()} · ${num(a.units)} · landed ${money(a.landed)} · ${sv.received>0?html`<span class="minibar" title=${num(sv.sold)+" of "+num(sv.received)+" sold"}><i style=${{width:(Math.min(1,sv.sellThrough||0)*100).toFixed(0)+"%"}}></i></span> ${pct(sv.sellThrough)}`:"no stock"} · <${Health} ws=${ws} m=${a.margin}/></span></div>
         ${isOpen?html`<div>
           <div style=${{display:"flex",gap:"10px",flexWrap:"wrap",padding:"10px 15px",alignItems:"center",borderBottom:"1px solid var(--line)"}}>
             <span class="note">${inv.date||"—"} · transport <b class="mono">${money(+inv.transport||0)}</b> over ${num(a.units)} ${L.units} = <b class="mono">${money(a.units>0?(+inv.transport||0)/a.units:0)}</b>/${L.unit}${mode==="books"&&a.costVat>0?html` · input VAT <b class="mono">${money(a.costVat)}</b> stripped`:null}<br/>sold <b>${num(sv.sold)}</b> of ${num(sv.received)} (${sv.sellThrough==null?"—":pct(sv.sellThrough)}) · realized profit <b class="mono">${money(sv.realProfit)}</b> · ROI <b class=${sv.roi!=null&&sv.roi>0?"txt-good":""}>${sv.roi==null?"—":pct(sv.roi)}</b> on ${money(sv.landed)} invested</span>
             <span style=${{flex:1}}></span>
             <button class="btn sm" onClick=${()=>openInvoice(inv)}>Edit</button>
             <button class="btn sm primary" onClick=${()=>openItem(null,inv.id)}>${L.addItem}</button></div>
+          ${sv.received>0?html`<div style=${{padding:"10px 15px",borderBottom:"1px solid var(--line)"}}>
+            <div class="barlab"><span>Sell-through</span><span class="note">${num(sv.sold)} of ${num(sv.received)} ${L.units} sold · ${num(sv.onHand)} on hand · ROI ${sv.roi==null?"—":pct(sv.roi)}</span></div>
+            <div class="stbar"><i style=${{width:(Math.min(1,sv.sellThrough||0)*100).toFixed(1)+"%"}}></i></div></div>`:null}
           ${its.length===0?html`<div class="note" style=${{padding:"16px"}}>No ${L.items.toLowerCase()} on this ${L.inv} yet.</div>`:
           html`<div class="tablewrap"><table><thead><tr><th style=${{width:"28px"}}></th><th>${L.item[0].toUpperCase()+L.item.slice(1)}</th><th>${mode==="books"?"Section":"Category"}</th><th class="num">Qty</th>
             <th class="num">Unit cost (net)</th><th class="num">Retail</th><th class="num">Margin</th></tr></thead>
