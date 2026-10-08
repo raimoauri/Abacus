@@ -1019,6 +1019,8 @@ function Items({cfg,act,openItem,preset,clearPreset}){
       <button class="btn sm" onClick=${()=>bulk(ids=>act.bulkSet(ids,{favorite:false}))}>☆ Unflag</button>
       <button class="btn sm" onClick=${()=>bulk(ids=>act.bulkSet(ids,{keyed:true}))}>✓ Mark keyed</button>
       <button class="btn sm" onClick=${()=>bulk(ids=>act.bulkSet(ids,{keyed:false}))}>Mark not keyed</button>
+      <button class="btn sm" onClick=${()=>bulk(ids=>act.bulkSet(ids,{forSale:true}))} title="Include in attention checks and Vektori progress">✓ For sale</button>
+      <button class="btn sm" onClick=${()=>bulk(ids=>act.bulkSet(ids,{forSale:false}))} title="Skip in attention checks and Vektori progress">⦸ Not for sale</button>
       <button class="btn sm" onClick=${()=>bulk(ids=>act.bulkRetailSuggested(ids))}>Price = suggested</button>
       <button class="btn sm" onClick=${()=>bulk(ids=>act.bulkRetail90(ids))}>Round to ,90</button>
       <span style=${{flex:1}}></span><button class="btn sm" onClick=${()=>setSel(new Set())}>Clear selection</button></div>`:null}
