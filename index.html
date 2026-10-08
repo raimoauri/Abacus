@@ -723,7 +723,7 @@ function Dashboard({cfg,t,go,goItems,openItem}){
     <div class="tiles">
       <${Tile} lead k="Expected profit" v=${money(t.profit)} foot=${"mean margin "+pct(t.margin)}/>
       <${Tile} k="Retail value (incl. VAT)" v=${money(t.retail)} sm=${true} foot=${num(t.units)+" "+L.units}/>
-      <${Tile} k="Landed cost (net)" v=${money(t.landed)} sm=${true} foot=${t.costVat>0?("input VAT "+money(t.costVat)+" stripped · transport "+money(t.transport)):("goods "+money(t.goods)+" · transport "+money(t.transport))}/>
+      <div title="Net = excluding VAT. Recoverable input VAT is stripped from cost; margin compares net cost to the VAT-exclusive part of the retail price."><${Tile} k="Landed cost (net)" v=${money(t.landed)} sm=${true} foot=${t.costVat>0?("input VAT "+money(t.costVat)+" stripped · transport "+money(t.transport)):("goods "+money(t.goods)+" · transport "+money(t.transport))}/></div>
       <${Tile} k="Output VAT" v=${money(t.vat)} sm=${true}/>
     </div>
     ${mode==="books"?html`<div class="split">
@@ -897,10 +897,10 @@ function Items({cfg,act,openItem,preset,clearPreset}){
         <th style=${{width:"30px"}}><input type="checkbox" checked=${allSel} onChange=${toggleAll} aria-label="Select all"/></th>
         <th style=${{width:"26px"}}></th>
         <th class="clickable" style=${{cursor:"pointer"}} onClick=${()=>S("name")}>${L.item[0].toUpperCase()+L.item.slice(1)}${arrow("name")}</th>
-        <th class="clickable" style=${{cursor:"pointer"}} onClick=${()=>S("category")}>${mode==="books"?"Section":"Cat."}${arrow("category")}</th>
+        <th class="clickable" style=${{cursor:"pointer"}} onClick=${()=>S("category")}>${mode==="books"?"Section":"Category"}${arrow("category")}</th>
         <th>${mode==="books"?"Source / batch":"Supplier / invoice"}</th>
         <th class="num clickable" style=${{cursor:"pointer"}} onClick=${()=>S("qty")}>Qty${arrow("qty")}</th>
-        <th class="num clickable" style=${{cursor:"pointer"}} onClick=${()=>S("unitCost")}>Unit cost (net)${arrow("unitCost")}</th>
+        <th class="num clickable" title="Net = excluding VAT (recoverable input VAT stripped from cost)" style=${{cursor:"pointer"}} onClick=${()=>S("unitCost")}>Unit cost (net)${arrow("unitCost")}</th>
         <th class="num clickable" style=${{cursor:"pointer"}} onClick=${()=>S("retail")}>Retail${arrow("retail")}</th>
         <th class="num clickable" style=${{cursor:"pointer"}} onClick=${()=>S("margin")}>Margin${arrow("margin")}</th>
         <th style=${{textAlign:"center"}} title="Keyed into Vektori">Vektori</th></tr></thead>
@@ -949,15 +949,25 @@ function Reorder({cfg,act,show}){
 
 /* ---- Suppliers ---- */
 function Suppliers({cfg,openSupplier}){
-  const {ws,L}=cfg;
+  const {ws,mode,L}=cfg;
+  const rows=ws.suppliers.map(s=>{const invs=ws.invoices.filter(i=>i.supplierId===s.id);
+    let units=0,net=0,retail=0,profit=0,items=0;
+    for(const inv of invs){const a=invoiceAgg(cfg,inv);units+=a.units;net+=a.landed;retail+=a.retail;profit+=a.profit;items+=a.lines;}
+    return {s,invs:invs.length,items,units,net,retail,profit,margin:retail>0?profit/retail:null};
+  }).sort((a,b)=>b.net-a.net);
   return html`<div class="view">
-    <div class="rowbetween"><div><div class="eyebrow">${cfg.mode==="books"?"Publishers & distributors":"Sources"}</div><div class="sectitle">Suppliers</div></div>
+    <div class="rowbetween"><div><div class="eyebrow">${mode==="books"?"Publishers & distributors":"Sources"}</div><div class="sectitle">Suppliers</div></div>
       <button class="btn primary" onClick=${()=>openSupplier(null)}>＋ New supplier</button></div>
-    <div class="panel"><div class="tablewrap"><table><thead><tr><th>Name</th><th>Country</th><th class="num">${L.invs}</th><th class="num">${L.items}</th><th></th></tr></thead>
-      <tbody>${ws.suppliers.map(s=>{const invs=ws.invoices.filter(i=>i.supplierId===s.id);const items=ws.items.filter(it=>invs.some(i=>i.id===it.invoiceId));
-        return html`<tr key=${s.id}><td><span class="name">${s.name}</span></td><td>${s.country||"—"}</td><td class="num">${invs.length}</td><td class="num">${items.length}</td>
-        <td class="num"><button class="btn link" onClick=${()=>openSupplier(s)}>Edit</button></td></tr>`;})}
-      ${ws.suppliers.length===0?html`<tr><td colSpan="5" class="note" style=${{padding:"20px",textAlign:"center"}}>No suppliers yet.</td></tr>`:null}</tbody></table></div></div>
+    <div class="panel"><div class="tablewrap"><table><thead><tr>
+      <th>Name</th><th>Country</th><th class="num">${L.invs}</th><th class="num">${L.items}</th>
+      <th class="num">Units</th><th class="num" title="Net landed cost (ex-VAT), incl. transport">Net cost</th><th class="num">Retail</th><th class="num">Margin</th><th></th></tr></thead>
+      <tbody>${rows.map(({s,invs,items,units,net,retail,margin})=>html`<tr key=${s.id}>
+        <td><span class="name">${s.name}</span></td><td>${s.country||"—"}</td>
+        <td class="num">${invs}</td><td class="num">${items}</td><td class="num">${num(units)}</td>
+        <td class="num mono">${money(net)}</td><td class="num mono">${money(retail)}</td>
+        <td class="num"><${Health} ws=${ws} m=${margin}/></td>
+        <td class="num"><button class="btn link" onClick=${()=>openSupplier(s)}>Edit</button></td></tr>`)}
+      ${ws.suppliers.length===0?html`<tr><td colSpan="9" class="note" style=${{padding:"20px",textAlign:"center"}}>No suppliers yet.</td></tr>`:null}</tbody></table></div></div>
   </div>`;}
 
 /* ---- Settings ---- */
