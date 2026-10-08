@@ -712,33 +712,53 @@ function invoiceAgg(cfg,inv){
 /* ---------- stock / FIFO sales engine ---------- */
 function normCode(s){return String(s||"").replace(/[\s-]/g,"").toUpperCase();}
 function lotKey(mode,o){const c=normCode(mode==="books"?o.isbn:o.sku);return c?("C:"+c):("N:"+String(o.name||"").trim().toLowerCase());}
-function csvParse(text){const rows=[];let i=0,field="",row=[],q=false;const pushF=()=>{row.push(field);field="";};const pushR=()=>{pushF();rows.push(row);row=[];};
+function csvParse(text,delim){delim=delim||",";const rows=[];let i=0,field="",row=[],q=false;const pushF=()=>{row.push(field);field="";};const pushR=()=>{pushF();rows.push(row);row=[];};
   while(i<text.length){const c=text[i];
     if(q){if(c==='"'){if(text[i+1]==='"'){field+='"';i++;}else q=false;}else field+=c;}
-    else{if(c==='"')q=true;else if(c===",")pushF();else if(c==="\n")pushR();else if(c==="\r"){}else field+=c;}
+    else{if(c==='"')q=true;else if(c===delim)pushF();else if(c==="\n")pushR();else if(c==="\r"){}else field+=c;}
     i++;}
   if(field.length||row.length)pushR();return rows;}
+function findHeaderRow(rows){for(let r=0;r<Math.min(rows.length,60);r++){const low=rows[r].map(c=>String(c).trim().toLowerCase());
+  const hasName=low.includes("name")||low.includes("product")||low.includes("title")||low.includes("tuote")||low.includes("nimi");
+  const hasQty=low.includes("sale pcs")||low.includes("qty")||low.includes("quantity")||low.includes("kpl")||low.includes("pcs")||low.includes("määrä");
+  const hasCode=low.includes("product code")||low.includes("code")||low.includes("sku")||low.includes("ean")||low.includes("isbn")||low.includes("tuotekoodi");
+  if((hasCode&&hasQty)||(hasName&&hasQty)||(hasName&&hasCode))return r;}return -1;}
 function parseSalesCSV(text,mode){
-  const rows=csvParse(text).filter(r=>r.some(c=>String(c).trim()!==""));
-  if(rows.length<1)return {sales:[],matchedHeaders:{}};
-  const header=rows[0].map(hh=>String(hh).trim().toLowerCase());
+  // auto-detect delimiter: whichever yields a recognisable header row
+  let delim=";",rows=csvParse(text,";"),hi=findHeaderRow(rows);
+  if(hi<0){const c=csvParse(text,",");if(findHeaderRow(c)>=0){rows=c;delim=",";hi=findHeaderRow(c);}
+    else{const t=csvParse(text,"\t");if(findHeaderRow(t)>=0){rows=t;delim="\t";hi=findHeaderRow(t);}}}
+  // default date from a "time frame" style preamble line (use the END of the range)
+  let defDate="";
+  for(let r=0;r<(hi<0?rows.length:hi);r++){const joined=rows[r].join(" ");
+    const m=joined.match(/(\d{2})[./-](\d{2})[./-](\d{4})[^-]*-[^0-9]*(\d{2})[./-](\d{2})[./-](\d{4})/);
+    if(m){defDate=m[6]+"-"+m[5]+"-"+m[4];break;}
+    const s=joined.match(/(\d{4})-(\d{2})-(\d{2})/);if(s){defDate=s[0];}}
+  const header=(hi>=0?rows[hi]:(rows[0]||[])).map(c=>String(c).trim().toLowerCase());
   const find=(...names)=>{for(const n of names){const i=header.indexOf(n);if(i>=0)return i;}return -1;};
   const ci={date:find("date","pvm","päivä","päiväys","sale date"),
-    code:find("code","sku","ean","isbn","barcode","product code","tuotekoodi","viivakoodi"),
-    name:find("name","product","title","tuote","nimi","tuotenimi","description","selite"),
-    qty:find("qty","quantity","units","count","määrä","kpl","sold","myyty","amount sold"),
-    price:find("unit price","price","amount","total","hinta","yhteensä","summa")};
-  const hasHeader=ci.qty>=0||ci.code>=0||ci.name>=0;
-  const start=hasHeader?1:0;
-  const sales=[];
+    code:find("product code","code","sku","ean","isbn","barcode","tuotekoodi","viivakoodi"),
+    name:find("name","product","title","tuote","nimi","tuotenimi"),
+    qty:find("sale pcs","qty","quantity","units","kpl","määrä","pcs","sold","myyty"),
+    price:find("sale","unit price","price","amount","total","hinta","summa"),
+    rqty:find("refund pcs","return pcs","refund qty","palautukset kpl"),
+    refund:find("refund","palautus")};
+  const isNonProduct=(code,name)=>{const c=String(code||"").toUpperCase().trim();const n=String(name||"").trim().toLowerCase();
+    return n==="total"||n==="yhteensä"||n==="yhteensa"||/^PR\d+$/.test(c)||c==="LHJKRTI"||n.startsWith("kassasta")||n.startsWith("lahjakortti");};
+  const start=hi>=0?hi+1:0;const sales=[];let skipped=0,refundRows=0;
   for(let r=start;r<rows.length;r++){const row=rows[r];const get=i=>i>=0?String(row[i]||"").trim():"";
-    let qty=parseNum(get(ci.qty)); if(qty==null&&!hasHeader)qty=parseNum(row[2]);
-    if(qty==null)qty=1;
-    const name=get(ci.name)||(!hasHeader?String(row[1]||"").trim():"");
-    const code=get(ci.code)||(!hasHeader?String(row[0]||"").trim():"");
+    const name=get(ci.name),code=get(ci.code);
     if(!name&&!code)continue;
-    sales.push({id:uid(),date:get(ci.date),code,name,qty,unitPrice:parseNum(get(ci.price)),note:""});}
-  return {sales,matchedHeaders:ci,hasHeader};}
+    if(isNonProduct(code,name)){skipped++;continue;}
+    const sp=parseNum(get(ci.qty))||0;
+    const rp=ci.rqty>=0?(parseNum(get(ci.rqty))||0):0;
+    const net=sp-rp;if(net<=0){skipped++;if(rp>0)refundRows++;continue;}
+    const saleTot=ci.price>=0?parseNum(get(ci.price)):null;
+    const refTot=ci.refund>=0?(parseNum(get(ci.refund))||0):0;
+    const netRev=(saleTot==null)?null:(saleTot+refTot);
+    const unitPrice=(netRev!=null&&net>0)?r2(netRev/net):null;
+    sales.push({id:uid(),date:get(ci.date)||defDate,code,name,qty:net,unitPrice,note:""});}
+  return {sales,skipped,refundRows,defDate,cols:ci};}
 function computeStock(cfg){
   const {ws,mode}=cfg;
   const lots=[];
@@ -1090,17 +1110,21 @@ function SaleModal({cfg,act,editing,onClose,show}){
   </${Modal}>`;}
 
 function SalesImportModal({cfg,act,onClose,show}){
-  const {mode}=cfg;const [txt,setTxt]=useState("");const [err,setErr]=useState("");const [preview,setPreview]=useState(null);const fileRef=useRef();
-  function parse(t){try{const r=parseSalesCSV(t,mode);setPreview(r.sales);setErr(r.sales.length?"":"No rows found — check the format.");}catch(e){setErr("Couldn't parse that CSV.");setPreview(null);}}
+  const {mode}=cfg;const [txt,setTxt]=useState("");const [err,setErr]=useState("");const [res,setRes]=useState(null);const [dateOv,setDateOv]=useState("");const fileRef=useRef();
+  function parse(t){try{const r=parseSalesCSV(t,mode);setRes(r);setErr(r.sales.length?"":"No rows found — check the format.");}catch(e){setErr("Couldn't parse that CSV.");setRes(null);}}
   function onFile(e){const file=e.target.files&&e.target.files[0];if(!file)return;const rd=new FileReader();rd.onload=()=>{const v=String(rd.result);setTxt(v);parse(v);};rd.readAsText(file);e.target.value="";}
-  function run(){if(!preview||!preview.length){setErr("Nothing to import.");return;}act.importSales(preview);show("toast","Imported "+preview.length+" sales");onClose();}
+  function run(){if(!res||!res.sales.length){setErr("Nothing to import.");return;}
+    const list=res.sales.map(s=>(dateOv?{...s,date:dateOv}:s));
+    act.importSales(list);show("toast","Imported "+list.length+" sales");onClose();}
+  const ok=res&&res.sales.length;
   return html`<${Modal} wide=${true} title="Import sales (CSV)" onClose=${onClose}
-    footer=${html`<${React.Fragment}><button class="btn" onClick=${onClose}>Cancel</button><button class="btn primary" onClick=${run} disabled=${!preview||!preview.length}>Import ${preview?preview.length:0} sales</button></${React.Fragment}>`}>
-    <div class="note">Paste or open a CSV exported from Vektori or WooCommerce. Columns are detected by header — it looks for <b>date</b>, <b>code / sku / ean / isbn</b>, <b>name / product / title</b>, <b>qty / quantity / kpl</b>, and optionally <b>price</b>. Column order doesn't matter.</div>
-    <div class="hintrow"><button class="btn sm" onClick=${()=>fileRef.current&&fileRef.current.click()}>Choose file…</button><input ref=${fileRef} type="file" accept=".csv,text/csv" style=${{display:"none"}} onChange=${onFile}/></div>
+    footer=${html`<${React.Fragment}><button class="btn" onClick=${onClose}>Cancel</button><button class="btn primary" onClick=${run} disabled=${!ok}>Import ${ok?res.sales.length:0} sales</button></${React.Fragment}>`}>
+    <div class="note">Paste or open a sales export from <b>Vektori</b> (Product Sales Report) or WooCommerce. The Vektori format is handled automatically — semicolons, the report header, decimal commas, and refunds (netted off). Matching is by product code (${mode==="books"?"ISBN":"SKU/EAN"}), then name. Vektori gives no per-line date, so rows are dated to the report's period end; set a date below to override.</div>
+    <div class="hintrow"><button class="btn sm" onClick=${()=>fileRef.current&&fileRef.current.click()}>Choose file…</button><input ref=${fileRef} type="file" accept=".csv,text/csv" style=${{display:"none"}} onChange=${onFile}/>
+      <label class="note" style=${{marginLeft:"6px"}}>Date for all rows:</label><input type="date" style=${{width:"auto"}} value=${dateOv} onInput=${e=>setDateOv(e.target.value)}/></div>
     <textarea class="io" value=${txt} onInput=${e=>{setTxt(e.target.value);parse(e.target.value);}} placeholder="Paste CSV rows here…"></textarea>
     ${err?html`<div class="valid no">${err}</div>`:null}
-    ${preview&&preview.length?html`<div class="note">Ready: <b>${preview.length}</b> rows. First: ${preview[0].name||preview[0].code} ×${preview[0].qty}${preview[0].date?(" on "+preview[0].date):""}.</div>`:null}
+    ${ok?html`<div class="note"><b>${res.sales.length}</b> product sales ready${res.skipped?(", "+res.skipped+" non-product/summary rows skipped (department keys, gift cards, refunds-only, totals)"):""}. Dated <b>${fmtD(dateOv||res.defDate)||"(none — set a date)"}</b>. First: ${res.sales[0].name||res.sales[0].code} ×${res.sales[0].qty}.</div>`:null}
   </${Modal}>`;}
 
 function Reorder({cfg,act,show}){
