@@ -30,6 +30,12 @@ sell-through, and ROI (realized profit ÷ amount invested in the batch). Unmatch
 flagged. Sales live in the same core file as a `sales` collection; they can split to a separate
 file if volume grows.
 
+**Inherited / pre-existing stock.** A product sold in Vektori that was never brought in through
+an invoice here (legacy or inherited stock) can be marked **inherited** — at import time (tick it
+in the "not in your catalogue" list) or later from the Sales list. Inherited sales are recognized
+rather than flagged unmatched, relate to no invoice, and carry no cost basis, so they are left out
+of ROI. The registry is a per-mode `inherited` list of `{code, name}` kept in the core file.
+
 ## Development
 The whole app is one file, `index.html` (React + htm, inlined UMD builds). Changes are committed
 here and go live on Pages after a refresh.
